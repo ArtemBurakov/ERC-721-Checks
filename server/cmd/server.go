@@ -27,6 +27,47 @@ type NFTData struct {
 	Description string `json:"description"`
 }
 
+var (
+	contractClient *ethclient.Client
+	instance       *contract.Contract
+	auth           *bind.TransactOpts
+)
+
+func init() {
+	// Create instance of the contract client
+	var err error
+	contractClient, err = ethclient.Dial(goDotEnvVariable("TESTNET_PROVIDER"))
+	if err != nil {
+		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
+	}
+
+	// Create instance of the contract
+	contractAddress := common.HexToAddress(goDotEnvVariable("DEPLOYED_CONTRACT_ADDRESS"))
+	instance, err = contract.NewContract(contractAddress, contractClient)
+	if err != nil {
+		log.Fatalf("Failed to instantiate contract: %v", err)
+	}
+
+	// Set up the transaction options
+	privateKey, err := crypto.HexToECDSA(goDotEnvVariable("SUPER_USER_PRIVATE_KEY"))
+	if err != nil {
+		log.Fatalf("Failed to decode private key: %v", err)
+	}
+	auth = bind.NewKeyedTransactor(privateKey)
+	nonce, err := contractClient.PendingNonceAt(context.Background(), auth.From)
+	if err != nil {
+		log.Fatalf("Failed to retrieve account nonce: %v", err)
+	}
+	gasPrice, err := contractClient.SuggestGasPrice(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to retrieve suggested gas price: %v", err)
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+	auth.Value = big.NewInt(0)
+	auth.GasLimit = uint64(30000)
+	auth.GasPrice = gasPrice
+}
+
 func goDotEnvVariable(key string) string {
 	// load .env file
 	err := godotenv.Load("../.env")
@@ -95,102 +136,6 @@ func whoAmI(c *fiber.Ctx) error {
 	return c.SendString("Welcome " + name)
 }
 
-func grandRole(c *fiber.Ctx) error {
-	userAddress := c.FormValue("userAddress")
-
-	// Create a new instance of the contract client
-	contractClient, err := ethclient.Dial(goDotEnvVariable("TESTNET_PROVIDER"))
-	if err != nil {
-		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
-	}
-	defer contractClient.Close()
-
-	// Create a new instance of the NFT contract
-	contractAddress := common.HexToAddress(goDotEnvVariable("DEPLOYED_CONTRACT_ADDRESS"))
-	instance, err := contract.NewContract(contractAddress, contractClient)
-	if err != nil {
-		log.Fatalf("Failed to instantiate the NFT contract: %v", err)
-	}
-
-	// Set up the transaction options
-	privateKey, err := crypto.HexToECDSA(goDotEnvVariable("SUPER_USER_PRIVATE_KEY"))
-	if err != nil {
-		log.Fatalf("Failed to decode private key: %v", err)
-	}
-	auth := bind.NewKeyedTransactor(privateKey)
-	nonce, err := contractClient.PendingNonceAt(context.Background(), auth.From)
-	if err != nil {
-		log.Fatalf("Failed to retrieve account nonce: %v", err)
-	}
-	gasPrice, err := contractClient.SuggestGasPrice(context.Background())
-	if err != nil {
-		log.Fatalf("Failed to retrieve suggested gas price: %v", err)
-	}
-	auth.Nonce = big.NewInt(int64(nonce))
-	auth.Value = big.NewInt(0)
-	auth.GasLimit = uint64(300000) // Or any other gas limit you want to set
-	auth.GasPrice = gasPrice
-
-	// Grant the MINTER_ROLE permission to the recipient address
-	roleHash := [32]byte{}
-	copy(roleHash[:], []byte("MINTER_ROLE"))
-	tx, err := instance.GrantRole(auth, roleHash, common.HexToAddress(userAddress))
-	if err != nil {
-		log.Fatalf("Failed to grant role: %v", err)
-	}
-	fmt.Printf("Role granted successfully. Transaction hash: %v\n", tx.Hash().Hex())
-
-	return nil
-}
-
-func revokeRole(c *fiber.Ctx) error {
-	userAddress := c.FormValue("userAddress")
-
-	// Create a new instance of the contract client
-	contractClient, err := ethclient.Dial(goDotEnvVariable("TESTNET_PROVIDER"))
-	if err != nil {
-		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
-	}
-	defer contractClient.Close()
-
-	// Create a new instance of the NFT contract
-	contractAddress := common.HexToAddress(goDotEnvVariable("DEPLOYED_CONTRACT_ADDRESS"))
-	instance, err := contract.NewContract(contractAddress, contractClient)
-	if err != nil {
-		log.Fatalf("Failed to instantiate the NFT contract: %v", err)
-	}
-
-	// Set up the transaction options
-	privateKey, err := crypto.HexToECDSA(goDotEnvVariable("SUPER_USER_PRIVATE_KEY"))
-	if err != nil {
-		log.Fatalf("Failed to decode private key: %v", err)
-	}
-	auth := bind.NewKeyedTransactor(privateKey)
-	nonce, err := contractClient.PendingNonceAt(context.Background(), auth.From)
-	if err != nil {
-		log.Fatalf("Failed to retrieve account nonce: %v", err)
-	}
-	gasPrice, err := contractClient.SuggestGasPrice(context.Background())
-	if err != nil {
-		log.Fatalf("Failed to retrieve suggested gas price: %v", err)
-	}
-	auth.Nonce = big.NewInt(int64(nonce))
-	auth.Value = big.NewInt(0)
-	auth.GasLimit = uint64(300000) // Or any other gas limit you want to set
-	auth.GasPrice = gasPrice
-
-	// Revoke the MINTER_ROLE permission to the recipient address
-	roleHash := [32]byte{}
-	copy(roleHash[:], []byte("MINTER_ROLE"))
-	tx, err := instance.RevokeRole(auth, roleHash, common.HexToAddress(userAddress))
-	if err != nil {
-		log.Fatalf("Failed to revoke role: %v", err)
-	}
-	fmt.Printf("Role revoked successfully. Transaction hash: %v\n", tx.Hash().Hex())
-
-	return nil
-}
-
 func createNFTEndpoint(c *fiber.Ctx) error {
 	var nftData NFTData
 	if err := c.BodyParser(&nftData); err != nil {
@@ -212,57 +157,45 @@ func createNFTEndpoint(c *fiber.Ctx) error {
 	return c.SendString("Success!")
 }
 
+func grandRole(c *fiber.Ctx) error {
+	userAddress := c.FormValue("userAddress")
+
+	// Grant the MINTER_ROLE permission to the recipient address
+	roleHash := [32]byte{}
+	copy(roleHash[:], []byte("MINTER_ROLE"))
+	tx, err := instance.GrantRole(auth, roleHash, common.HexToAddress(userAddress))
+	if err != nil {
+		log.Fatalf("Failed to grant role: %v", err)
+	}
+	fmt.Printf("Role granted successfully. Transaction hash: %v\n", tx.Hash().Hex())
+
+	return nil
+}
+
+func revokeRole(c *fiber.Ctx) error {
+	userAddress := c.FormValue("userAddress")
+
+	// Revoke the MINTER_ROLE permission to the recipient address
+	roleHash := [32]byte{}
+	copy(roleHash[:], []byte("MINTER_ROLE"))
+	tx, err := instance.RevokeRole(auth, roleHash, common.HexToAddress(userAddress))
+	if err != nil {
+		log.Fatalf("Failed to revoke role: %v", err)
+	}
+	fmt.Printf("Role revoked successfully. Transaction hash: %v\n", tx.Hash().Hex())
+
+	return nil
+}
+
 func createNFT(recipientAddress string, ipfsHash string) error {
-	// Create a new instance of the contract client
-	contractClient, err := ethclient.Dial(goDotEnvVariable("TESTNET_PROVIDER"))
-	if err != nil {
-		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
-	}
-	defer contractClient.Close()
-
-	// Create a new instance of the NFT contract
-	contractAddress := common.HexToAddress(goDotEnvVariable("DEPLOYED_CONTRACT_ADDRESS"))
-	instance, err := contract.NewContract(contractAddress, contractClient)
-	if err != nil {
-		log.Fatalf("Failed to instantiate the NFT contract: %v", err)
-	}
-
-	// Set up the transaction options
-	privateKey, err := crypto.HexToECDSA(goDotEnvVariable("SUPER_USER_PRIVATE_KEY"))
-	if err != nil {
-		log.Fatalf("Failed to decode private key: %v", err)
-	}
-	auth := bind.NewKeyedTransactor(privateKey)
-	nonce, err := contractClient.PendingNonceAt(context.Background(), auth.From)
-	if err != nil {
-		log.Fatalf("Failed to retrieve account nonce: %v", err)
-	}
-	gasPrice, err := contractClient.SuggestGasPrice(context.Background())
-	if err != nil {
-		log.Fatalf("Failed to retrieve suggested gas price: %v", err)
-	}
-	auth.Nonce = big.NewInt(int64(nonce))
-	auth.Value = big.NewInt(0)
-	auth.GasLimit = uint64(300000) // Or any other gas limit you want to set
-	auth.GasPrice = gasPrice
-
 	// // Call the MintTo function to create a new NFT
 	recipient := common.HexToAddress(recipientAddress)
 	tokenURI := "ipfs://" + ipfsHash
-	tx, err := instance.SafeMint(auth, recipient, tokenURI)
+	tx, err := instance.MintTo(auth, recipient, tokenURI)
 	if err != nil {
 		log.Fatalf("Failed to create NFT: %v", err)
 	}
 	fmt.Printf("NFT created successfully. Transaction hash: %v\n", tx.Hash().Hex())
-
-	// Grant the MINTER_ROLE permission to the recipient address
-	// roleHash := [32]byte{}
-	// copy(roleHash[:], []byte("MINTER_ROLE"))
-	// tx, err := instance.GrantRole(auth, roleHash, recipient)
-	// if err != nil {
-	// 	log.Fatalf("Failed to grant role: %v", err)
-	// }
-	// fmt.Printf("Role granted successfully. Transaction hash: %v\n", tx.Hash().Hex())
 
 	return nil
 }
