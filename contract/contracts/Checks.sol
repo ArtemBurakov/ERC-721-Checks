@@ -12,8 +12,6 @@ contract Checks is ERC721, ERC721URIStorage, AccessControl {
 
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
-    event TokenTransferred(address from, address to, uint256 tokenId);
-
     modifier onlyDefaultAdmin() {
         require(
             hasRole(DEFAULT_ADMIN_ROLE, msg.sender),
@@ -40,31 +38,17 @@ contract Checks is ERC721, ERC721URIStorage, AccessControl {
         revokeRole(MINTER_ROLE, account);
     }
 
-    function mintTo(
-        address to,
-        string memory uri
-    ) public onlyMinter returns (uint256) {
+    function _mint(address to, string memory uri) public onlyMinter {
         uint256 tokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, uri);
-
-        _tokenIdCounter.increment();
-        return tokenId;
     }
 
     function _burn(
         uint256 tokenId
     ) internal override(ERC721, ERC721URIStorage) onlyDefaultAdmin {
         super._burn(tokenId);
-    }
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 tokenId
-    ) public virtual override {
-        emit TokenTransferred(from, to, tokenId);
-        super.transferFrom(from, to, tokenId);
     }
 
     function tokenURI(
