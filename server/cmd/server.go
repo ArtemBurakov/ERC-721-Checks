@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
-	"erc-721-checks/contract"
 	"fmt"
 	"log"
 	"math/big"
-	"os"
 
-	"github.com/joho/godotenv"
-	"github.com/turret-io/go-menu/menu"
+	"erc-721-checks/contract"
+	"erc-721-checks/utils"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/turret-io/go-menu/menu"
 )
 
 var (
@@ -23,34 +22,23 @@ var (
 	auth           *bind.TransactOpts
 )
 
-func envHelper(key string) string {
-	// load .env file
-	err := godotenv.Load("../.env")
-
-	if err != nil {
-		log.Fatalf("Error loading .env file")
-	}
-
-	return os.Getenv(key)
-}
-
 func init() {
-	// Create instance of the contract client
+	fmt.Println("Connecting to the smart contract...")
 	var err error
-	contractClient, err = ethclient.Dial(envHelper("TESTNET_PROVIDER"))
+	contractClient, err = ethclient.Dial(utils.EnvHelper("TESTNET_PROVIDER"))
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
 
-	// Create instance of the contract
-	contractAddress := common.HexToAddress(envHelper("DEPLOYED_CONTRACT_ADDRESS"))
+	fmt.Println("Instantiating the smart contract...")
+	contractAddress := common.HexToAddress(utils.EnvHelper("DEPLOYED_CONTRACT_ADDRESS"))
 	instance, err = contract.NewContract(contractAddress, contractClient)
 	if err != nil {
 		log.Fatalf("Failed to instantiate contract: %v", err)
 	}
 
-	// Set up the transaction options
-	privateKey, err := crypto.HexToECDSA(envHelper("SUPER_USER_PRIVATE_KEY"))
+	fmt.Printf("Setting up the transaction options...\n\n")
+	privateKey, err := crypto.HexToECDSA(utils.EnvHelper("SUPER_USER_PRIVATE_KEY"))
 	if err != nil {
 		log.Fatalf("Failed to decode private key: %v", err)
 	}
@@ -69,17 +57,7 @@ func init() {
 	auth.GasPrice = gasPrice
 }
 
-func promptAddress(fn func(string) error) func(...string) error {
-	return func(args ...string) error {
-		var address string
-		fmt.Print("Enter wallet address: ")
-		fmt.Scanln(&address)
-		return fn(address)
-	}
-}
-
 func grantRole(address string) error {
-	// Grant the MINTER_ROLE permission to the recipient address
 	roleHash := [32]byte{}
 	copy(roleHash[:], []byte("MINTER_ROLE"))
 	tx, err := instance.GrantRole(auth, roleHash, common.HexToAddress(address))
@@ -92,7 +70,6 @@ func grantRole(address string) error {
 }
 
 func revokeRole(address string) error {
-	// Revoke the MINTER_ROLE permission to the recipient address
 	roleHash := [32]byte{}
 	copy(roleHash[:], []byte("MINTER_ROLE"))
 	tx, err := instance.RevokeRole(auth, roleHash, common.HexToAddress(address))
@@ -106,8 +83,8 @@ func revokeRole(address string) error {
 
 func main() {
 	commandOptions := []menu.CommandOption{
-		{Command: "grantRole", Description: "Grant user minter role", Function: promptAddress(grantRole)},
-		{Command: "revokeRole", Description: "Revoke user minter role", Function: promptAddress(revokeRole)},
+		{Command: "grantRole", Description: "Grant user minter role", Function: utils.PromptAddress(grantRole)},
+		{Command: "revokeRole", Description: "Revoke user minter role", Function: utils.PromptAddress(revokeRole)},
 	}
 	menuOptions := menu.NewMenuOptions("> ", 0)
 
