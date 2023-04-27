@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	minterRoleHash [32]byte
 	contractClient *ethclient.Client
 	instance       *contract.Contract
 	auth           *bind.TransactOpts
@@ -25,20 +26,20 @@ var (
 func init() {
 	fmt.Println("Connecting to the smart contract...")
 	var err error
-	contractClient, err = ethclient.Dial(utils.EnvHelper("TESTNET_PROVIDER"))
+	contractClient, err = ethclient.Dial(utils.EnvHelper(utils.ProviderKey))
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
 
 	fmt.Println("Instantiating the smart contract...")
-	contractAddress := common.HexToAddress(utils.EnvHelper("DEPLOYED_CONTRACT_ADDRESS"))
+	contractAddress := common.HexToAddress(utils.EnvHelper(utils.ContractAddressKey))
 	instance, err = contract.NewContract(contractAddress, contractClient)
 	if err != nil {
 		log.Fatalf("Failed to instantiate contract: %v", err)
 	}
 
 	fmt.Printf("Setting up the transaction options...\n\n")
-	privateKey, err := crypto.HexToECDSA(utils.EnvHelper("SUPER_USER_PRIVATE_KEY"))
+	privateKey, err := crypto.HexToECDSA(utils.EnvHelper(utils.SuperUserPrivateKey))
 	if err != nil {
 		log.Fatalf("Failed to decode private key: %v", err)
 	}
@@ -55,12 +56,12 @@ func init() {
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = uint64(30000)
 	auth.GasPrice = gasPrice
+
+	copy(minterRoleHash[:], []byte("MINTER_ROLE"))
 }
 
 func grantRole(address string) error {
-	roleHash := [32]byte{}
-	copy(roleHash[:], []byte("MINTER_ROLE"))
-	tx, err := instance.GrantRole(auth, roleHash, common.HexToAddress(address))
+	tx, err := instance.GrantRole(auth, minterRoleHash, common.HexToAddress(address))
 	if err != nil {
 		log.Fatalf("Failed to grant role: %v", err)
 	}
@@ -70,9 +71,7 @@ func grantRole(address string) error {
 }
 
 func revokeRole(address string) error {
-	roleHash := [32]byte{}
-	copy(roleHash[:], []byte("MINTER_ROLE"))
-	tx, err := instance.RevokeRole(auth, roleHash, common.HexToAddress(address))
+	tx, err := instance.RevokeRole(auth, minterRoleHash, common.HexToAddress(address))
 	if err != nil {
 		log.Fatalf("Failed to revoke role: %v", err)
 	}

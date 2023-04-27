@@ -11,6 +11,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const (
+	ProviderKey         = "TESTNET_PROVIDER"
+	ContractAddressKey  = "DEPLOYED_CONTRACT_ADDRESS"
+	SuperUserPrivateKey = "SUPER_USER_PRIVATE_KEY"
+)
+
 func PromptAddress(fn func(string) error) func(...string) error {
 	return func(args ...string) error {
 		reader := bufio.NewReader(os.Stdin)
