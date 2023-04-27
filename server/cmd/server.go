@@ -1,62 +1,49 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
-	"net/http"
-	"os"
 
 	"erc-721-checks/contract"
+	"erc-721-checks/utils"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/gofiber/fiber/v2"
-	"github.com/joho/godotenv"
+	"github.com/turret-io/go-menu/menu"
 )
 
-type NFTData struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
+var (
+	minterRoleHash [32]byte
+	contractClient *ethclient.Client
+	instance       *contract.Contract
+	auth           *bind.TransactOpts
+)
 
-func goDotEnvVariable(key string) string {
-	// load .env file
-	err := godotenv.Load("../.env")
-
-	if err != nil {
-		log.Fatalf("Error loading .env file")
-	}
-
-	return os.Getenv(key)
-}
-
-func createNFT(recipientAddress string, ipfsHash string) error {
-	// Create a new instance of the contract client
-	contractClient, err := ethclient.Dial(goDotEnvVariable("TESTNET_PROVIDER"))
+func init() {
+	fmt.Println("Connecting to the smart contract...")
+	var err error
+	contractClient, err = ethclient.Dial(utils.EnvHelper(utils.ProviderKey))
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
-	defer contractClient.Close()
 
-	// Create a new instance of the NFT contract
-	contractAddress := common.HexToAddress(goDotEnvVariable("DEPLOYED_CONTRACT_ADDRESS"))
-	instance, err := contract.NewContract(contractAddress, contractClient)
+	fmt.Println("Instantiating the smart contract...")
+	contractAddress := common.HexToAddress(utils.EnvHelper(utils.ContractAddressKey))
+	instance, err = contract.NewContract(contractAddress, contractClient)
 	if err != nil {
-		log.Fatalf("Failed to instantiate the NFT contract: %v", err)
+		log.Fatalf("Failed to instantiate contract: %v", err)
 	}
 
-	// Set up the transaction options
-	privateKey, err := crypto.HexToECDSA(goDotEnvVariable("RECIPIENT_PRIVATE_KEY"))
+	fmt.Printf("Setting up the transaction options...\n\n")
+	privateKey, err := crypto.HexToECDSA(utils.EnvHelper(utils.SuperUserPrivateKey))
 	if err != nil {
 		log.Fatalf("Failed to decode private key: %v", err)
 	}
-	auth := bind.NewKeyedTransactor(privateKey)
+	auth = bind.NewKeyedTransactor(privateKey)
 	nonce, err := contractClient.PendingNonceAt(context.Background(), auth.From)
 	if err != nil {
 		log.Fatalf("Failed to retrieve account nonce: %v", err)
@@ -67,83 +54,39 @@ func createNFT(recipientAddress string, ipfsHash string) error {
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Value = big.NewInt(0)
-	auth.GasLimit = uint64(300000) // Or any other gas limit you want to set
+	auth.GasLimit = uint64(30000)
 	auth.GasPrice = gasPrice
 
-	// Call the MintTo function to create a new NFT
-	recipient := common.HexToAddress(recipientAddress)
-	tokenURI := "ipfs://" + ipfsHash
-	tx, err := instance.MintTo(auth, recipient, tokenURI)
+	copy(minterRoleHash[:], []byte("MINTER_ROLE"))
+}
+
+func grantRole(address string) error {
+	tx, err := instance.GrantRole(auth, minterRoleHash, common.HexToAddress(address))
 	if err != nil {
-		log.Fatalf("Failed to create NFT: %v", err)
+		log.Fatalf("Failed to grant role: %v", err)
 	}
-	fmt.Printf("NFT created successfully. Transaction hash: %v\n", tx.Hash().Hex())
+	fmt.Printf("Role granted successfully. Transaction hash: %v\n", tx.Hash().Hex())
 
 	return nil
 }
 
-func pinJSONToIPFS(nftData *NFTData) (string, error) {
-	pinataJWT := goDotEnvVariable("PINATA_JWT_TOKEN")
-	pinataAPI := "https://api.pinata.cloud/pinning/pinJSONToIPFS"
-
-	jsonBytes, err := json.Marshal(nftData)
+func revokeRole(address string) error {
+	tx, err := instance.RevokeRole(auth, minterRoleHash, common.HexToAddress(address))
 	if err != nil {
-		return "", err
+		log.Fatalf("Failed to revoke role: %v", err)
 	}
+	fmt.Printf("Role revoked successfully. Transaction hash: %v\n", tx.Hash().Hex())
 
-	req, err := http.NewRequest(http.MethodPost, pinataAPI, bytes.NewBuffer(jsonBytes))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+pinataJWT)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var respData struct {
-		IpfsHash string `json:"IpfsHash"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
-		return "", err
-	}
-
-	return respData.IpfsHash, nil
-}
-
-func createNFTEndpoint(c *fiber.Ctx) error {
-	var nftData NFTData
-	if err := c.BodyParser(&nftData); err != nil {
-		return err
-	}
-
-	ipfsHash, err := pinJSONToIPFS(&nftData)
-	if err != nil {
-		log.Println(err)
-		return c.SendString("Error!")
-	}
-
-	err = createNFT(goDotEnvVariable("RECIPIENT_ADDRESS"), ipfsHash)
-	if err != nil {
-		log.Println(err)
-		return c.SendString("Error!")
-	}
-
-	return c.SendString("Success!")
-}
-
-func setupRoutes(app *fiber.App) {
-	app.Get("api/v1/create", createNFTEndpoint)
+	return nil
 }
 
 func main() {
-	app := fiber.New()
-	setupRoutes(app)
-	app.Listen(":3000")
+	commandOptions := []menu.CommandOption{
+		{Command: "grantRole", Description: "Grant user minter role", Function: utils.PromptAddress(grantRole)},
+		{Command: "revokeRole", Description: "Revoke user minter role", Function: utils.PromptAddress(revokeRole)},
+	}
+	menuOptions := menu.NewMenuOptions("> ", 0)
+
+	menu := menu.NewMenu(commandOptions, menuOptions)
+	menu.Start()
 }
