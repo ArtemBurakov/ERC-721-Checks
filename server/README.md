@@ -14,7 +14,7 @@ Tools for compiling your smart contract solidity code to use build files to inte
 How to install abigen, follow this [link](https://geth.ethereum.org/docs/tools/abigen).
 How to install solc, follow this [link](https://goethereumbook.org/smart-contract-compile/).
 
-### 4. Blockchain Node Service Provider
+### 3. Blockchain Node Service Provider
 
 You can use any provider that supports the Ethereum blockchain, such as Infura, Alchemy, etc.
 
