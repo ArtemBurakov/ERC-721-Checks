@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bufio"
+	"erc-721-checks/models"
 	"fmt"
 	"log"
 	"os"
@@ -37,6 +38,14 @@ func PromptAddress(fn func(string) error) func(...string) error {
 		}
 		return fn(address)
 	}
+}
+
+func ToMinters(minters []string) []models.Minter {
+	var m []models.Minter
+	for _, address := range minters {
+		m = append(m, models.Minter{Address: address})
+	}
+	return m
 }
 
 func EnvHelper(key string) string {

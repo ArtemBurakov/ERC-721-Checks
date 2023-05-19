@@ -4,7 +4,9 @@ go 1.20
 
 require (
 	github.com/ethereum/go-ethereum v1.11.5
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/joho/godotenv v1.5.1
+	github.com/lib/pq v1.10.9
 	github.com/turret-io/go-menu v1.0.2
 )
 
@@ -15,7 +17,6 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-ole/go-ole v1.2.1 // indirect
-	github.com/go-sql-driver/mysql v1.7.1 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
