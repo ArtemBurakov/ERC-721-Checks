@@ -7,15 +7,15 @@ import (
 	"math/big"
 	"strings"
 
-	"erc-721-checks/contract"
-	"erc-721-checks/utils"
+	"erc-721-checks/internal/checks"
+	"erc-721-checks/internal/contract"
+	"erc-721-checks/internal/utils"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/turret-io/go-menu/menu"
 )
 
@@ -25,9 +25,11 @@ type Transfer struct {
 	TokenId *big.Int
 }
 
+var smartContract *contract.SmartContract
+
 func listen(address string) error {
-	fmt.Println("Connecting to the smart contract...")
-	client, err := ethclient.Dial(utils.EnvHelper(utils.ProviderKey))
+	var err error
+	smartContract, err = contract.InitContract()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,14 +40,13 @@ func listen(address string) error {
 		Topics:    [][]common.Hash{{crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))}},
 	}
 
-	contractAbi, err := abi.JSON(strings.NewReader(string(contract.ContractABI)))
+	contractAbi, err := abi.JSON(strings.NewReader(string(checks.ContractABI)))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Subscribing to the smart contract events...")
 	logs := make(chan types.Log)
-	sub, err := client.SubscribeFilterLogs(context.Background(), query, logs)
+	sub, err := smartContract.ContractClient.SubscribeFilterLogs(context.Background(), query, logs)
 	if err != nil {
 		log.Fatal(err)
 	}

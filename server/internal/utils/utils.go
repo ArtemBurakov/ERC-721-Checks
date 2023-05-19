@@ -2,7 +2,7 @@ package utils
 
 import (
 	"bufio"
-	"erc-721-checks/models"
+	"erc-721-checks/internal/models"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	DotEnvPath          = "../../.env"
 	ProviderKey         = "TESTNET_PROVIDER"
 	ContractAddressKey  = "DEPLOYED_CONTRACT_ADDRESS"
 	SuperUserPrivateKey = "SUPER_USER_PRIVATE_KEY"
@@ -49,7 +50,7 @@ func ToMinters(minters []string) []models.Minter {
 }
 
 func EnvHelper(key string) string {
-	err := godotenv.Load("../.env")
+	err := godotenv.Load(DotEnvPath)
 	if err != nil {
 		log.Fatalf("Error loading .env file")
 	}

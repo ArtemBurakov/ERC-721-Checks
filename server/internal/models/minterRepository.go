@@ -7,10 +7,6 @@ import (
 	"github.com/lib/pq"
 )
 
-type Minter struct {
-	Address string
-}
-
 type minterRepository struct {
 	db *sql.DB
 }
