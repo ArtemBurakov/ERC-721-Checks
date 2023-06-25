@@ -15,29 +15,36 @@ import (
 const (
 	DotEnvPath          = "../../.env"
 	ProviderKey         = "TESTNET_PROVIDER"
-	ContractAddressKey  = "DEPLOYED_CONTRACT_ADDRESS"
 	SuperUserPrivateKey = "SUPER_USER_PRIVATE_KEY"
 )
 
 func PromptAddress(fn func(string) error) func(...string) error {
 	return func(args ...string) error {
-		reader := bufio.NewReader(os.Stdin)
-		var address string
-		for {
-			fmt.Print("Enter address: ")
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				return err
-			}
-			input = strings.TrimSpace(input)
-			if !common.IsHexAddress(input) {
-				fmt.Println("Invalid address. Please enter a valid Ethereum address.")
-				continue
-			}
-			address = input
-			break
+		address, err := promptAddress("Enter user address: ")
+		if err != nil {
+			return err
 		}
 		return fn(address)
+	}
+}
+
+func PromptContractAddress() (string, error) {
+	return promptAddress("Enter contract address: ")
+}
+
+func promptAddress(prompt string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print(prompt)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
+		input = strings.TrimSpace(input)
+		if common.IsHexAddress(input) {
+			return input, nil
+		}
+		fmt.Println("Invalid address. Please enter a valid Ethereum address.")
 	}
 }
 

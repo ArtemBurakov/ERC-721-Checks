@@ -6,21 +6,22 @@ import (
 	"math/big"
 
 	"erc-721-checks/internal/checks"
-	"erc-721-checks/internal/models"
 	"erc-721-checks/internal/utils"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-const gasLimit = 30000
+const gasLimit = 300000
 
 type SmartContract struct {
-	Instance       *checks.Contract
-	Auth           *bind.TransactOpts
-	ContractClient *ethclient.Client
+	ContractAddress string
+	Instance        *checks.Checks
+	Auth            *bind.TransactOpts
+	ContractClient  *ethclient.Client
 }
 
 var minterRoleHash = crypto.Keccak256Hash([]byte("MINTER_ROLE"))
@@ -31,8 +32,12 @@ func InitContract() (*SmartContract, error) {
 		return nil, fmt.Errorf("failed to connect to the Ethereum client: %v", err)
 	}
 
-	contractAddress := common.HexToAddress(utils.EnvHelper(utils.ContractAddressKey))
-	instance, err := checks.NewContract(contractAddress, contractClient)
+	address, err := utils.PromptContractAddress()
+	if err != nil {
+		return nil, fmt.Errorf("failed to instantiate contract: %v", err)
+	}
+	contractAddress := common.HexToAddress(address)
+	instance, err := checks.NewChecks(contractAddress, contractClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate contract: %v", err)
 	}
@@ -56,38 +61,68 @@ func InitContract() (*SmartContract, error) {
 	auth.GasPrice = gasPrice
 
 	return &SmartContract{
-		Instance:       instance,
-		Auth:           auth,
-		ContractClient: contractClient,
+		Instance:        instance,
+		Auth:            auth,
+		ContractClient:  contractClient,
+		ContractAddress: address,
 	}, nil
 }
 
-func (sc *SmartContract) GrantRole(address string, minterRepository models.MinterRepository) error {
-	tx, err := sc.Instance.GrantRole(sc.Auth, minterRoleHash, common.HexToAddress(address))
+func (sc *SmartContract) UpdateNonce() error {
+	nonce, err := sc.ContractClient.PendingNonceAt(context.Background(), sc.Auth.From)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve account nonce: %v", err)
+	}
+	sc.Auth.Nonce = big.NewInt(int64(nonce))
+	return nil
+}
+
+func (sc *SmartContract) GrantRole(address string) error {
+	tx, err := sc.Instance.SetMinter(sc.Auth, common.HexToAddress(address))
 	if err != nil {
 		return fmt.Errorf("failed to grant role: %v", err)
 	}
-	fmt.Printf("Role granted successfully. Transaction hash: %v\n", tx.Hash().Hex())
+	fmt.Printf("Transaction hash: %v\n", tx.Hash().Hex())
 
-	err = minterRepository.CreateMinter(address)
+	receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
 	if err != nil {
-		return fmt.Errorf("failed to add minter to the database: %v", err)
+		return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
 	}
+
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("transaction failed: status %v", receipt.Status)
+	}
+
+	if err = sc.UpdateNonce(); err != nil {
+		return fmt.Errorf("failed to sync nonce: %w", err)
+	}
+
+	fmt.Println("Transaction confirmed: role granted successfully")
 
 	return nil
 }
 
-func (sc *SmartContract) RevokeRole(address string, minterRepository models.MinterRepository) error {
-	tx, err := sc.Instance.RevokeRole(sc.Auth, minterRoleHash, common.HexToAddress(address))
+func (sc *SmartContract) RevokeRole(address string) error {
+	tx, err := sc.Instance.RemoveMinter(sc.Auth, common.HexToAddress(address))
 	if err != nil {
 		return fmt.Errorf("failed to revoke role: %v", err)
 	}
-	fmt.Printf("Role revoked successfully. Transaction hash: %v\n", tx.Hash().Hex())
+	fmt.Printf("Transaction hash: %v\n", tx.Hash().Hex())
 
-	err = minterRepository.DeleteMinter(address)
+	receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
 	if err != nil {
-		return fmt.Errorf("failed to remove minter from the database: %v", err)
+		return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
 	}
+
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("transaction failed: status %v", receipt.Status)
+	}
+
+	if err = sc.UpdateNonce(); err != nil {
+		return fmt.Errorf("failed to sync nonce: %w", err)
+	}
+
+	fmt.Println("Transaction confirmed: role revoked successfully")
 
 	return nil
 }
@@ -110,8 +145,14 @@ func (sc *SmartContract) SyncMinterRole(address string) error {
 			return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
 		}
 
+		if err = sc.UpdateNonce(); err != nil {
+			return fmt.Errorf("failed to sync nonce: %w", err)
+		}
+
 		fmt.Printf("Granted access to minter: %s\n", minter.Hex())
 	}
+
+	fmt.Print("Sync completed successfully")
 
 	return nil
 }

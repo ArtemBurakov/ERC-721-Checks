@@ -26,23 +26,40 @@ func init() {
 	var err error
 	smartContract, err = contract.InitContract()
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatalf("Failed to initialize the smart contract: %v", err)
 	}
 }
 
 func grantRole(address string) error {
-	return smartContract.GrantRole(address, minterRepository)
+	if err := minterRepository.CreateMinter(address); err != nil {
+		fmt.Printf("failed to add minter to the database: %v\n", err)
+	}
+
+	if err := smartContract.GrantRole(address); err != nil {
+		_ = minterRepository.DeleteMinter(address)
+		fmt.Printf("failed to grant role: %v\n", err)
+	}
+
+	return nil
 }
 
 func revokeRole(address string) error {
-	return smartContract.RevokeRole(address, minterRepository)
+	if err := minterRepository.DeleteMinter(address); err != nil {
+		fmt.Printf("failed to remove minter from the database: %v\n", err)
+	}
+
+	if err := smartContract.RevokeRole(address); err != nil {
+		_ = minterRepository.CreateMinter(address)
+		fmt.Printf("failed to revoke role: %v\n", err)
+	}
+
+	return nil
 }
 
 func printMinters(args ...string) error {
 	minters, err := smartContract.GetMinters()
 	if err != nil {
-		return fmt.Errorf("failed to get minters: %v", err)
+		fmt.Printf("failed to get minters: %v\n", err)
 	}
 
 	for _, minter := range minters {
@@ -56,14 +73,14 @@ func syncMinters(args ...string) error {
 	fmt.Println("Fetching minters from the database...")
 	minters, err := minterRepository.GetAllMinters()
 	if err != nil {
-		return fmt.Errorf("failed to fetch existing minters from database: %v", err)
+		fmt.Printf("failed to fetch existing minters from database: %v\n", err)
 	}
 
 	fmt.Println("Syncing minters with local database...")
 	for _, minter := range minters {
 		err = smartContract.SyncMinterRole(minter.Address)
 		if err != nil {
-			return fmt.Errorf("failed to sync minter: %v", err)
+			fmt.Printf("failed to sync minter: %v\n", err)
 		}
 	}
 
@@ -73,12 +90,13 @@ func syncMinters(args ...string) error {
 func fetchMinters(args ...string) error {
 	minters, err := smartContract.GetMinters()
 	if err != nil {
-		log.Fatalf("failed to get minters: %v", err)
+		fmt.Printf("failed to get minters: %v\n", err)
 	}
 
 	if err := minterRepository.InitializeMintersTable(utils.ToMinters(minters)); err != nil {
-		log.Fatalf("failed to initialize minters table: %v", err)
+		fmt.Printf("failed to initialize minters table: %v\n", err)
 	}
+
 	fmt.Println("Minters inserted to the database")
 
 	return nil
@@ -93,7 +111,6 @@ func main() {
 		{Command: "fetchMinters", Description: "Save all users with minter role to local db", Function: fetchMinters},
 	}
 	menuOptions := menu.NewMenuOptions("> ", 0)
-
 	menu := menu.NewMenu(commandOptions, menuOptions)
 	menu.Start()
 }
