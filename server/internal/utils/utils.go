@@ -2,7 +2,6 @@ package utils
 
 import (
 	"bufio"
-	"erc-721-checks/internal/models"
 	"fmt"
 	"log"
 	"os"
@@ -16,11 +15,16 @@ const (
 	DotEnvPath          = "../../.env"
 	ProviderKey         = "TESTNET_PROVIDER"
 	SuperUserPrivateKey = "SUPER_USER_PRIVATE_KEY"
+	DBHost              = "DATABASE_HOST"
+	DBPort              = "DATABASE_PORT"
+	DBName              = "DATABASE_NAME"
+	DBUser              = "DATABASE_USER"
+	DBPassword          = "DATABASE_USER_PASSWORD"
 )
 
 func PromptAddress(fn func(string) error) func(...string) error {
 	return func(args ...string) error {
-		address, err := promptAddress("Enter user address: ")
+		address, err := handleAddressPrompt("Enter user address: ")
 		if err != nil {
 			return err
 		}
@@ -29,10 +33,10 @@ func PromptAddress(fn func(string) error) func(...string) error {
 }
 
 func PromptContractAddress() (string, error) {
-	return promptAddress("Enter contract address: ")
+	return handleAddressPrompt("Enter contract address: ")
 }
 
-func promptAddress(prompt string) (string, error) {
+func handleAddressPrompt(prompt string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print(prompt)
@@ -48,17 +52,8 @@ func promptAddress(prompt string) (string, error) {
 	}
 }
 
-func ToMinters(minters []string) []models.Minter {
-	var m []models.Minter
-	for _, address := range minters {
-		m = append(m, models.Minter{Address: address})
-	}
-	return m
-}
-
 func EnvHelper(key string) string {
-	err := godotenv.Load(DotEnvPath)
-	if err != nil {
+	if err := godotenv.Load(DotEnvPath); err != nil {
 		log.Fatalf("Error loading .env file")
 	}
 	return os.Getenv(key)

@@ -7,28 +7,30 @@ import (
 	"github.com/lib/pq"
 )
 
-type minterRepository struct {
+const (
+	MintersTable         = "minters"
+	MintersIDColumn      = "id"
+	MintersAddressColumn = "address"
+	MintersStatusColumn  = "status"
+	ActiveMinterStatus   = 1
+	ArchivedMinterStatus = 0
+)
+
+type MinterRepository struct {
 	db *sql.DB
 }
 
-type MinterRepository interface {
-	GetAllMinters() ([]Minter, error)
-	CreateMinter(address string) error
-	DeleteMinter(address string) error
-	InitializeMintersTable(minters []Minter) error
+func NewMinterRepository(db *sql.DB) *MinterRepository {
+	return &MinterRepository{db}
 }
 
-func NewMinterRepository(db *sql.DB) MinterRepository {
-	return &minterRepository{db}
-}
-
-func (mr *minterRepository) InitializeMintersTable(minters []Minter) error {
-	if _, err := mr.db.Exec("TRUNCATE TABLE minters"); err != nil {
+func (mr *MinterRepository) InitializeMintersTable(minters []Minter) error {
+	if _, err := mr.db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY", MintersTable)); err != nil {
 		return fmt.Errorf("failed to truncate minters table: %v", err)
 	}
 
 	for _, m := range minters {
-		if err := mr.CreateMinter(m.Address); err != nil {
+		if err := mr.CreateMinter(m.Address, ActiveMinterStatus); err != nil {
 			return fmt.Errorf("failed to add minter %v: %v", m.Address, err)
 		}
 	}
@@ -36,9 +38,8 @@ func (mr *minterRepository) InitializeMintersTable(minters []Minter) error {
 	return nil
 }
 
-func (mr *minterRepository) CreateMinter(address string) error {
-	_, err := mr.db.Exec("INSERT INTO minters (address) VALUES ($1)", address)
-	if err != nil {
+func (mr *MinterRepository) CreateMinter(address string, status int) error {
+	if _, err := mr.db.Exec(fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES ($1, $2)", MintersTable, MintersAddressColumn, MintersStatusColumn), address, status); err != nil {
 		pgErr, ok := err.(*pq.Error)
 		if ok && pgErr.Code == "23505" {
 			fmt.Printf("Minter %s already exists in the database\n", address)
@@ -50,17 +51,16 @@ func (mr *minterRepository) CreateMinter(address string) error {
 	return nil
 }
 
-func (mr *minterRepository) DeleteMinter(address string) error {
-	_, err := mr.db.Exec("DELETE FROM minters WHERE address = $1", address)
-	if err != nil {
-		return fmt.Errorf("error deleting minter: %v", err)
+func (mr *MinterRepository) UpdateMinter(address string, status int) error {
+	if _, err := mr.db.Exec(fmt.Sprintf("UPDATE %s SET %s = $1 WHERE %s = $2", MintersTable, MintersStatusColumn, MintersAddressColumn), status, address); err != nil {
+		return fmt.Errorf("error updating minter status: %v", err)
 	}
 
 	return nil
 }
 
-func (mr *minterRepository) GetAllMinters() ([]Minter, error) {
-	rows, err := mr.db.Query("SELECT address FROM minters")
+func (mr *MinterRepository) GetAllMinters() ([]Minter, error) {
+	rows, err := mr.db.Query(fmt.Sprintf("SELECT %s, %s FROM %s", MintersAddressColumn, MintersStatusColumn, MintersTable))
 	if err != nil {
 		return nil, fmt.Errorf("error getting all minters: %v", err)
 	}
@@ -69,7 +69,7 @@ func (mr *minterRepository) GetAllMinters() ([]Minter, error) {
 	var minters []Minter
 	for rows.Next() {
 		var minter Minter
-		if err := rows.Scan(&minter.Address); err != nil {
+		if err := rows.Scan(&minter.Address, &minter.Status); err != nil {
 			return nil, fmt.Errorf("error scanning minter: %v", err)
 		}
 		minters = append(minters, minter)

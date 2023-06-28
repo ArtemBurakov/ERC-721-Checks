@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sync"
 
 	"erc-721-checks/internal/contract"
 	"erc-721-checks/internal/database"
@@ -14,16 +15,16 @@ import (
 
 var (
 	smartContract    *contract.SmartContract
-	minterRepository models.MinterRepository
+	minterRepository *models.MinterRepository
 )
 
 func init() {
-	if err := database.InitDB(); err != nil {
+	var err error
+	if err = database.InitDB(); err != nil {
 		log.Fatalf("Failed to initialize the database connection pool: %v", err)
 	}
-	minterRepository = models.NewMinterRepository(database.GetDB())
+	minterRepository = models.NewMinterRepository(database.DBInstance)
 
-	var err error
 	smartContract, err = contract.InitContract()
 	if err != nil {
 		log.Fatalf("Failed to initialize the smart contract: %v", err)
@@ -31,26 +32,34 @@ func init() {
 }
 
 func grantRole(address string) error {
-	if err := minterRepository.CreateMinter(address); err != nil {
+	if err := minterRepository.CreateMinter(address, models.ActiveMinterStatus); err != nil {
 		fmt.Printf("failed to add minter to the database: %v\n", err)
+		return nil
 	}
 
 	if err := smartContract.GrantRole(address); err != nil {
-		_ = minterRepository.DeleteMinter(address)
 		fmt.Printf("failed to grant role: %v\n", err)
+
+		if err := minterRepository.UpdateMinter(address, models.ArchivedMinterStatus); err != nil {
+			fmt.Printf("failed to delete minter: %v\n", err)
+		}
 	}
 
 	return nil
 }
 
 func revokeRole(address string) error {
-	if err := minterRepository.DeleteMinter(address); err != nil {
+	if err := minterRepository.UpdateMinter(address, models.ArchivedMinterStatus); err != nil {
 		fmt.Printf("failed to remove minter from the database: %v\n", err)
+		return nil
 	}
 
 	if err := smartContract.RevokeRole(address); err != nil {
-		_ = minterRepository.CreateMinter(address)
 		fmt.Printf("failed to revoke role: %v\n", err)
+
+		if err := minterRepository.UpdateMinter(address, models.ActiveMinterStatus); err != nil {
+			fmt.Printf("failed to create minter: %v\n", err)
+		}
 	}
 
 	return nil
@@ -60,6 +69,7 @@ func printMinters(args ...string) error {
 	minters, err := smartContract.GetMinters()
 	if err != nil {
 		fmt.Printf("failed to get minters: %v\n", err)
+		return nil
 	}
 
 	for _, minter := range minters {
@@ -70,20 +80,27 @@ func printMinters(args ...string) error {
 }
 
 func syncMinters(args ...string) error {
-	fmt.Println("Fetching minters from the database...")
 	minters, err := minterRepository.GetAllMinters()
 	if err != nil {
 		fmt.Printf("failed to fetch existing minters from database: %v\n", err)
+		return nil
 	}
 
-	fmt.Println("Syncing minters with local database...")
+	var wg sync.WaitGroup
 	for _, minter := range minters {
-		err = smartContract.SyncMinterRole(minter.Address)
-		if err != nil {
-			fmt.Printf("failed to sync minter: %v\n", err)
-		}
-	}
+		wg.Add(1)
 
+		go func(minter models.Minter) {
+			defer wg.Done()
+			err := smartContract.SyncMinterRole(minter)
+			if err != nil {
+				fmt.Printf("failed to sync minter: %v\n", err)
+			}
+		}(minter)
+	}
+	wg.Wait()
+
+	fmt.Print("Sync completed successfully\n")
 	return nil
 }
 
@@ -91,14 +108,20 @@ func fetchMinters(args ...string) error {
 	minters, err := smartContract.GetMinters()
 	if err != nil {
 		fmt.Printf("failed to get minters: %v\n", err)
+		return nil
 	}
 
-	if err := minterRepository.InitializeMintersTable(utils.ToMinters(minters)); err != nil {
+	var mintersArray []models.Minter
+	for _, address := range minters {
+		mintersArray = append(mintersArray, models.Minter{Address: address})
+	}
+
+	if err := minterRepository.InitializeMintersTable(mintersArray); err != nil {
 		fmt.Printf("failed to initialize minters table: %v\n", err)
+		return nil
 	}
 
 	fmt.Println("Minters inserted to the database")
-
 	return nil
 }
 

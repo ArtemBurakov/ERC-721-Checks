@@ -61,9 +61,8 @@ func listen(args ...string) error {
 		log.Fatal(err)
 	}
 
-	contractAddress := common.HexToAddress(smartContract.ContractAddress)
 	query := ethereum.FilterQuery{
-		Addresses: []common.Address{contractAddress},
+		Addresses: []common.Address{smartContract.ContractAddress},
 		Topics:    [][]common.Hash{{crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))}},
 	}
 
