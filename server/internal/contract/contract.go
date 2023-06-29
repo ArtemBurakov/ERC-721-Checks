@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 
 	"erc-721-checks/internal/checks"
 	"erc-721-checks/internal/models"
@@ -52,7 +53,6 @@ func InitContract() (*SmartContract, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve suggested gas price: %v", err)
 	}
-
 	auth.GasLimit = uint64(gasLimit)
 	auth.GasPrice = gasPrice
 
@@ -89,10 +89,6 @@ func (sc *SmartContract) GrantRole(address string) error {
 
 		receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
 		if err != nil {
-			if strings.Contains(err.Error(), "replacement transaction underpriced") {
-				continue
-			}
-
 			return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
 		}
 
@@ -127,10 +123,6 @@ func (sc *SmartContract) RevokeRole(address string) error {
 
 		receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
 		if err != nil {
-			if strings.Contains(err.Error(), "replacement transaction underpriced") {
-				continue
-			}
-
 			return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
 		}
 
@@ -153,20 +145,25 @@ func (sc *SmartContract) SyncMinterRole(minter models.Minter) error {
 		return fmt.Errorf("failed to check if minter has role: %v", err)
 	}
 
-	if !hasRole && minter.Status == models.ActiveMinterStatus {
-		if err := sc.GrantRole(minter.Address); err != nil {
-			return fmt.Errorf("failed to grant role to minter: %v", err)
+	switch minter.Status {
+	case models.ActiveMinterStatus:
+		if !hasRole {
+			if err := sc.GrantRole(minter.Address); err != nil {
+				return fmt.Errorf("failed to grant role to minter: %v", err)
+			}
 		}
-	} else if hasRole && minter.Status == models.ArchivedMinterStatus {
-		if err := sc.RevokeRole(minter.Address); err != nil {
-			return fmt.Errorf("failed to revoke role to minter: %v", err)
+	case models.ArchivedMinterStatus:
+		if hasRole {
+			if err := sc.RevokeRole(minter.Address); err != nil {
+				return fmt.Errorf("failed to revoke role from minter: %v", err)
+			}
 		}
 	}
 
 	return nil
 }
 
-func (sc *SmartContract) GetMinters() ([]string, error) {
+func (sc *SmartContract) GetMinters() ([]models.Minter, error) {
 	opts := &bind.CallOpts{
 		Context: context.Background(),
 	}
@@ -177,14 +174,32 @@ func (sc *SmartContract) GetMinters() ([]string, error) {
 	}
 	fmt.Printf("Minters count: %s\n", minterCount)
 
-	var minters []string
+	var (
+		waitGroup     sync.WaitGroup
+		minterChannel = make(chan common.Address, minterCount.Uint64())
+	)
 	for i := uint64(0); i < minterCount.Uint64(); i++ {
-		minter, err := sc.Instance.GetRoleMember(opts, minterRoleHash, big.NewInt(int64(i)))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get minter at index %d: %v", i, err)
-		}
-		minters = append(minters, minter.Hex())
+		waitGroup.Add(1)
+		go func(index uint64) {
+			defer waitGroup.Done()
+			minter, err := sc.Instance.GetRoleMember(opts, minterRoleHash, big.NewInt(int64(index)))
+			if err != nil {
+				fmt.Printf("Failed to get minter at index %d: %v\n", index, err)
+				return
+			}
+			minterChannel <- minter
+		}(i)
 	}
 
-	return minters, nil
+	go func() {
+		waitGroup.Wait()
+		close(minterChannel)
+	}()
+
+	var mintersArray []models.Minter
+	for minter := range minterChannel {
+		mintersArray = append(mintersArray, models.Minter{Address: minter.Hex(), Status: models.ActiveMinterStatus})
+	}
+
+	return mintersArray, nil
 }

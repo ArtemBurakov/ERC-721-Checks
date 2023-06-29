@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/lib/pq"
 )
@@ -29,10 +30,22 @@ func (mr *MinterRepository) InitializeMintersTable(minters []Minter) error {
 		return fmt.Errorf("failed to truncate minters table: %v", err)
 	}
 
-	for _, m := range minters {
-		if err := mr.CreateMinter(m.Address, ActiveMinterStatus); err != nil {
-			return fmt.Errorf("failed to add minter %v: %v", m.Address, err)
-		}
+	var (
+		placeholderIndex = 1
+		valueStrings     []string
+		values           []interface{}
+	)
+	for _, minter := range minters {
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d)", placeholderIndex, placeholderIndex+1))
+		values = append(values, minter.Address, minter.Status)
+		placeholderIndex += 2
+	}
+
+	query := fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES %s",
+		MintersTable, MintersAddressColumn, MintersStatusColumn, strings.Join(valueStrings, ","))
+
+	if _, err := mr.db.Exec(query, values...); err != nil {
+		return fmt.Errorf("failed to insert minters: %v", err)
 	}
 
 	return nil

@@ -73,7 +73,7 @@ func printMinters(args ...string) error {
 	}
 
 	for _, minter := range minters {
-		fmt.Println(minter)
+		fmt.Println(minter.Address)
 	}
 
 	return nil
@@ -100,20 +100,15 @@ func syncMinters(args ...string) error {
 	}
 	wg.Wait()
 
-	fmt.Print("Sync completed successfully\n")
+	fmt.Print("Sync completed\n")
 	return nil
 }
 
 func fetchMinters(args ...string) error {
-	minters, err := smartContract.GetMinters()
+	mintersArray, err := smartContract.GetMinters()
 	if err != nil {
 		fmt.Printf("failed to get minters: %v\n", err)
 		return nil
-	}
-
-	var mintersArray []models.Minter
-	for _, address := range minters {
-		mintersArray = append(mintersArray, models.Minter{Address: address})
 	}
 
 	if err := minterRepository.InitializeMintersTable(mintersArray); err != nil {
