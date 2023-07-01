@@ -56,6 +56,7 @@ func (mr *MinterRepository) CreateMinter(address string, status int) error {
 		pgErr, ok := err.(*pq.Error)
 		if ok && pgErr.Code == "23505" {
 			fmt.Printf("Minter %s already exists in the database\n", address)
+			mr.UpdateMinter(address, ActiveMinterStatus)
 			return nil
 		}
 		return fmt.Errorf("error adding minter: %v", err)

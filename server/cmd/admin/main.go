@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"sync"
 
 	"erc-721-checks/internal/contract"
 	"erc-721-checks/internal/database"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/turret-io/go-menu/menu"
 )
+
+const mintersBatchSize = 50
 
 var (
 	smartContract    *contract.SmartContract
@@ -37,7 +38,7 @@ func grantRole(address string) error {
 		return nil
 	}
 
-	if err := smartContract.GrantRole(address); err != nil {
+	if err := smartContract.GrantRole(address, smartContract.Auth.Nonce.Uint64()); err != nil {
 		fmt.Printf("failed to grant role: %v\n", err)
 
 		if err := minterRepository.UpdateMinter(address, models.ArchivedMinterStatus); err != nil {
@@ -54,7 +55,7 @@ func revokeRole(address string) error {
 		return nil
 	}
 
-	if err := smartContract.RevokeRole(address); err != nil {
+	if err := smartContract.RevokeRole(address, smartContract.Auth.Nonce.Uint64()); err != nil {
 		fmt.Printf("failed to revoke role: %v\n", err)
 
 		if err := minterRepository.UpdateMinter(address, models.ActiveMinterStatus); err != nil {
@@ -86,21 +87,13 @@ func syncMinters(args ...string) error {
 		return nil
 	}
 
-	var wg sync.WaitGroup
-	for _, minter := range minters {
-		wg.Add(1)
-
-		go func(minter models.Minter) {
-			defer wg.Done()
-			err := smartContract.SyncMinterRole(minter)
-			if err != nil {
-				fmt.Printf("failed to sync minter: %v\n", err)
-			}
-		}(minter)
+	err = smartContract.SyncMinterRoles(minters, mintersBatchSize)
+	if err != nil {
+		fmt.Printf("\nSync failed with error: %v\n", err)
+	} else {
+		fmt.Println("\nSync completed")
 	}
-	wg.Wait()
 
-	fmt.Print("Sync completed\n")
 	return nil
 }
 
@@ -128,7 +121,7 @@ func main() {
 		{Command: "syncMinters", Description: "Sync local minters with contract", Function: syncMinters},
 		{Command: "fetchMinters", Description: "Save all users with minter role to local db", Function: fetchMinters},
 	}
-	menuOptions := menu.NewMenuOptions("> ", 0)
+	menuOptions := menu.NewMenuOptions("\n> ", 0)
 	menu := menu.NewMenu(commandOptions, menuOptions)
 	menu.Start()
 }

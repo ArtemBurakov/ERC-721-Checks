@@ -21,17 +21,14 @@ describe("Checks", function () {
 
     admin = await ethers.getSigner();
     user = await ethers.Wallet.createRandom();
-    minterWithProvider = new ethers.Wallet(
-      MINTER_TEST_PRIVATE_KEY,
-      provider
-    ).connect(provider);
+    minterWithProvider = new ethers.Wallet(MINTER_TEST_PRIVATE_KEY, provider).connect(provider);
 
     const Checks = await ethers.getContractFactory("Checks");
     checksContract = await Checks.deploy();
     await checksContract.deployed();
 
     // Use deployed contract
-    // const contractAddress = checksContract.address;
+    // const contractAddress = "0x8dCeF6251A29CcfD01Bd9E64CeAe7D4A0307c77A";
     // console.log("Contract address:", contractAddress);
     // const Checks = await ethers.getContractFactory("Checks");
     // checksContract = await Checks.attach(contractAddress);
@@ -39,21 +36,11 @@ describe("Checks", function () {
 
   describe("Deployment", function () {
     it("Should set the admin as the default admin role", async function () {
-      expect(
-        await checksContract.hasRole(
-          await checksContract.DEFAULT_ADMIN_ROLE(),
-          admin.address
-        )
-      ).to.be.true;
+      expect(await checksContract.hasRole(await checksContract.DEFAULT_ADMIN_ROLE(), admin.address)).to.be.true;
     });
 
     it("Should set the admin as a minter", async function () {
-      expect(
-        await checksContract.hasRole(
-          await checksContract.MINTER_ROLE(),
-          admin.address
-        )
-      ).to.be.true;
+      expect(await checksContract.hasRole(await checksContract.MINTER_ROLE(), admin.address)).to.be.true;
     });
   });
 
@@ -64,26 +51,15 @@ describe("Checks", function () {
         .setMinter(minterWithProvider.address)
         .then((tx) => tx.wait());
 
-      expect(
-        await checksContract.hasRole(
-          await checksContract.MINTER_ROLE(),
-          minterWithProvider.address
-        )
-      ).to.be.true;
+      expect(await checksContract.hasRole(await checksContract.MINTER_ROLE(), minterWithProvider.address)).to.be.true;
     });
 
     it("Should not allow the default user to set a minter", async function () {
-      expect(
-        await checksContract
-          .connect(minterWithProvider)
-          .setMinter(user.address, { gasLimit })
-      ).to.be.revertedWith("Caller is not an admin");
+      expect(await checksContract.connect(minterWithProvider).setMinter(user.address, { gasLimit })).to.be.revertedWith("Caller is not an admin");
     });
 
     it("Should not allow setting an invalid minter address", async function () {
-      await expect(
-        checksContract.connect(admin).setMinter(ethers.constants.AddressZero)
-      ).to.be.revertedWith("Invalid minter address");
+      await expect(checksContract.connect(admin).setMinter(ethers.constants.AddressZero)).to.be.revertedWith("Invalid minter address");
     });
 
     it("Should allow a minter to mint a token", async function () {
@@ -96,27 +72,15 @@ describe("Checks", function () {
     });
 
     it("Should not allow minting to an invalid recipient address", async function () {
-      expect(
-        await checksContract
-          .connect(minterWithProvider)
-          ._mint(ethers.constants.AddressZero, tokenURI, { gasLimit })
-      ).to.be.revertedWith("Invalid recipient address");
+      expect(await checksContract.connect(minterWithProvider)._mint(ethers.constants.AddressZero, tokenURI, { gasLimit })).to.be.revertedWith("Invalid recipient address");
     });
 
     it("Should not allow minting to the contract itself", async function () {
-      expect(
-        await checksContract
-          .connect(minterWithProvider)
-          ._mint(checksContract.address, tokenURI, { gasLimit })
-      ).to.be.revertedWith("Cannot mint to the contract itself");
+      expect(await checksContract.connect(minterWithProvider)._mint(checksContract.address, tokenURI, { gasLimit })).to.be.revertedWith("Cannot mint to the contract itself");
     });
 
     it("Should not allow minting with an empty URI", async function () {
-      expect(
-        await checksContract
-          .connect(minterWithProvider)
-          ._mint(user.address, "", { gasLimit })
-      ).to.be.revertedWith("URI cannot be empty");
+      expect(await checksContract.connect(minterWithProvider)._mint(user.address, "", { gasLimit })).to.be.revertedWith("URI cannot be empty");
     });
   });
 });

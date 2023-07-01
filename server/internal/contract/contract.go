@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 
 	"erc-721-checks/internal/checks"
@@ -25,7 +24,6 @@ type SmartContract struct {
 	Auth            *bind.TransactOpts
 	ContractClient  *ethclient.Client
 	ContractAddress common.Address
-	nonceManager    *NonceManager
 }
 
 var minterRoleHash = crypto.Keccak256Hash([]byte("MINTER_ROLE"))
@@ -49,6 +47,12 @@ func InitContract() (*SmartContract, error) {
 	}
 	auth := bind.NewKeyedTransactor(privateKey)
 
+	nonce, err := contractClient.PendingNonceAt(context.Background(), auth.From)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve account nonce: %v", err)
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+
 	gasPrice, err := contractClient.SuggestGasPrice(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve suggested gas price: %v", err)
@@ -56,110 +60,132 @@ func InitContract() (*SmartContract, error) {
 	auth.GasLimit = uint64(gasLimit)
 	auth.GasPrice = gasPrice
 
-	nonceManager := NewNonceManager(contractClient, auth)
-	nonceManager.StartNonceSync()
-
 	sc := &SmartContract{
 		Instance:        instance,
 		Auth:            auth,
 		ContractClient:  contractClient,
 		ContractAddress: contractAddress,
-		nonceManager:    nonceManager,
 	}
 
 	return sc, nil
 }
 
-func (sc *SmartContract) GrantRole(address string) error {
+func (sc *SmartContract) GrantRole(address string, nonce uint64) error {
 	minter := common.HexToAddress(address)
+	sc.Auth.Nonce = big.NewInt(int64(nonce))
 
-	for {
-		nonce := sc.nonceManager.GetNonce()
-		sc.Auth.Nonce = big.NewInt(int64(nonce))
-
-		tx, err := sc.Instance.SetMinter(sc.Auth, minter)
-		if err != nil {
-			if strings.Contains(err.Error(), "replacement transaction underpriced") {
-				sc.nonceManager.IncrementNonce()
-				continue
-			}
-
-			return fmt.Errorf("failed to grant role: %v", err)
-		}
-
-		receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
-		if err != nil {
-			return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
-		}
-
-		if receipt.Status != types.ReceiptStatusSuccessful {
-			return fmt.Errorf("transaction failed: status %v", receipt.Status)
-		}
-
-		sc.nonceManager.IncrementNonce()
-		break
-	}
-
-	fmt.Printf("Role granted to: %s\n", minter)
-	return nil
-}
-
-func (sc *SmartContract) RevokeRole(address string) error {
-	minter := common.HexToAddress(address)
-
-	for {
-		nonce := sc.nonceManager.GetNonce()
-		sc.Auth.Nonce = big.NewInt(int64(nonce))
-
-		tx, err := sc.Instance.RemoveMinter(sc.Auth, minter)
-		if err != nil {
-			if strings.Contains(err.Error(), "replacement transaction underpriced") {
-				sc.nonceManager.IncrementNonce()
-				continue
-			}
-
-			return fmt.Errorf("failed to revoke role: %v", err)
-		}
-
-		receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
-		if err != nil {
-			return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
-		}
-
-		if receipt.Status != types.ReceiptStatusSuccessful {
-			return fmt.Errorf("transaction failed: status %v", receipt.Status)
-		}
-
-		sc.nonceManager.IncrementNonce()
-		break
-	}
-
-	fmt.Printf("Role revoked for: %s\n", minter)
-	return nil
-}
-
-func (sc *SmartContract) SyncMinterRole(minter models.Minter) error {
-	minterAddress := common.HexToAddress(minter.Address)
-	hasRole, err := sc.Instance.HasRole(nil, minterRoleHash, minterAddress)
+	tx, err := sc.Instance.SetMinter(sc.Auth, minter)
 	if err != nil {
-		return fmt.Errorf("failed to check if minter has role: %v", err)
+		return fmt.Errorf("failed to grant role to minter: %s, %v", minter, err)
 	}
 
-	switch minter.Status {
-	case models.ActiveMinterStatus:
-		if !hasRole {
-			if err := sc.GrantRole(minter.Address); err != nil {
-				return fmt.Errorf("failed to grant role to minter: %v", err)
-			}
-		}
-	case models.ArchivedMinterStatus:
-		if hasRole {
-			if err := sc.RevokeRole(minter.Address); err != nil {
-				return fmt.Errorf("failed to revoke role from minter: %v", err)
-			}
-		}
+	receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
 	}
 
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("transaction failed: status %v", receipt.Status)
+	}
+
+	sc.Auth.Nonce = big.NewInt(int64(nonce + 1))
+
+	fmt.Println("\nAction: Grant role")
+	fmt.Printf("To Address: %s\n", minter)
+	fmt.Printf("Status: %d\n", receipt.Status)
+	fmt.Printf("Nonce: %s\n", big.NewInt(int64(nonce)))
+	fmt.Printf("Transaction hash: %s\n", tx.Hash().Hex())
+	return nil
+}
+
+func (sc *SmartContract) RevokeRole(address string, nonce uint64) error {
+	minter := common.HexToAddress(address)
+	sc.Auth.Nonce = big.NewInt(int64(nonce))
+
+	tx, err := sc.Instance.RemoveMinter(sc.Auth, minter)
+	if err != nil {
+		return fmt.Errorf("failed to revoke role to minter: %s, %v", minter, err)
+	}
+
+	receipt, err := bind.WaitMined(context.Background(), sc.ContractClient, tx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for transaction to be mined: %v", err)
+	}
+
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("transaction failed: status %v", receipt.Status)
+	}
+
+	sc.Auth.Nonce = big.NewInt(int64(nonce + 1))
+
+	fmt.Println("\nAction: Revoke role")
+	fmt.Printf("To Address: %s\n", minter)
+	fmt.Printf("Status: %d\n", receipt.Status)
+	fmt.Printf("Nonce: %s\n", big.NewInt(int64(nonce)))
+	fmt.Printf("Transaction hash: %s\n", tx.Hash().Hex())
+	return nil
+}
+
+func (sc *SmartContract) SyncMinterRoles(minters []models.Minter, batchSize int) error {
+	var waitGroup sync.WaitGroup
+	currentNonce, err := sc.ContractClient.PendingNonceAt(context.Background(), sc.Auth.From)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve account nonce: %v", err)
+	}
+
+	numBatches := (len(minters) + batchSize - 1) / batchSize
+	for i := 0; i < numBatches; i++ {
+		startIndex := i * batchSize
+		endIndex := (i + 1) * batchSize
+		if endIndex > len(minters) {
+			endIndex = len(minters)
+		}
+
+		batchMinters := minters[startIndex:endIndex]
+		for _, minter := range batchMinters {
+			minterAddress := common.HexToAddress(minter.Address)
+			hasRole, err := sc.Instance.HasRole(nil, minterRoleHash, minterAddress)
+			if err != nil {
+				fmt.Printf("failed to check if minter has role: %v\n", err)
+				return err
+			}
+
+			switch minter.Status {
+			case models.ActiveMinterStatus:
+				if !hasRole {
+					waitGroup.Add(1)
+
+					go func(minter models.Minter, nonce uint64) {
+						defer waitGroup.Done()
+						err := sc.GrantRole(minter.Address, nonce)
+						if err != nil {
+							fmt.Printf("failed to grant role to minter: %v\n", err)
+						}
+					}(minter, currentNonce)
+
+					currentNonce++
+				}
+			case models.ArchivedMinterStatus:
+				if hasRole {
+					waitGroup.Add(1)
+
+					go func(minter models.Minter, nonce uint64) {
+						defer waitGroup.Done()
+						err := sc.RevokeRole(minter.Address, nonce)
+						if err != nil {
+							fmt.Printf("failed to revoke role from minter: %v\n", err)
+						}
+					}(minter, currentNonce)
+
+					currentNonce++
+				}
+			}
+		}
+
+		waitGroup.Wait()
+	}
+
+	sc.Auth.Nonce = big.NewInt(int64(currentNonce))
 	return nil
 }
 
