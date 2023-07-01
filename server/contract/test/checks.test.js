@@ -5,6 +5,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { MINTER_TEST_PRIVATE_KEY } = process.env;
 
+const nftID = 13;
 const gasLimit = 3000000;
 const tokenURI = "ipfs://QmRAQB6YaC91dP37UdDnjFY5vQuiBrcqdyoW1Cu321wxkD4";
 
@@ -28,7 +29,7 @@ describe("Checks", function () {
     await checksContract.deployed();
 
     // Use deployed contract
-    // const contractAddress = "0x8dCeF6251A29CcfD01Bd9E64CeAe7D4A0307c77A";
+    // const contractAddress = "";
     // console.log("Contract address:", contractAddress);
     // const Checks = await ethers.getContractFactory("Checks");
     // checksContract = await Checks.attach(contractAddress);
@@ -65,10 +66,10 @@ describe("Checks", function () {
     it("Should allow a minter to mint a token", async function () {
       await checksContract
         .connect(minterWithProvider)
-        ._mint(user.address, tokenURI)
+        ._mint(minterWithProvider.address, tokenURI)
         .then((tx) => tx.wait());
-      expect(await checksContract.ownerOf(0)).to.equal(user.address);
-      expect(await checksContract.tokenURI(0)).to.equal(tokenURI);
+      expect(await checksContract.ownerOf(nftID)).to.equal(minterWithProvider.address);
+      expect(await checksContract.tokenURI(nftID)).to.equal(tokenURI);
     });
 
     it("Should not allow minting to an invalid recipient address", async function () {
