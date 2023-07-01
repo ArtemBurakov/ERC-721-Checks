@@ -19,38 +19,41 @@ import (
 )
 
 type Transfer struct {
-	From    common.Address
-	To      common.Address
-	TokenId *big.Int
+	TxHash      common.Hash
+	BlockNumber uint64
+	BlockHash   common.Hash
+	From        common.Address
+	To          common.Address
+	TokenId     *big.Int
 }
 
 var (
 	contractAbi   abi.ABI
 	smartContract *contract.SmartContract
+	logs          chan types.Log
 )
 
-func processEvents(logs chan types.Log) {
+func processEvents() {
 	for vLog := range logs {
-		go func(vLog types.Log) {
-			fmt.Println("Log Name: Transfer")
-			fmt.Printf("Transaction hash: %s\n", vLog.TxHash.Hex())
-			fmt.Printf("Block Number: %d\n", vLog.BlockNumber)
-			fmt.Printf("Block Hash: %s\n", vLog.BlockHash.Hex())
+		var transferEvent Transfer
+		if err := contractAbi.UnpackIntoInterface(&transferEvent, "Transfer", vLog.Data); err != nil {
+			log.Fatal(err)
+		}
 
-			var transferEvent Transfer
-			if err := contractAbi.UnpackIntoInterface(&transferEvent, "Transfer", vLog.Data); err != nil {
-				log.Fatal(err)
-			}
+		transferEvent.TxHash = vLog.TxHash
+		transferEvent.BlockNumber = vLog.BlockNumber
+		transferEvent.BlockHash = vLog.BlockHash
+		transferEvent.From = common.HexToAddress(vLog.Topics[1].Hex())
+		transferEvent.To = common.HexToAddress(vLog.Topics[2].Hex())
+		transferEvent.TokenId = new(big.Int).SetBytes(vLog.Topics[3][:])
 
-			transferEvent.From = common.HexToAddress(vLog.Topics[1].Hex())
-			transferEvent.To = common.HexToAddress(vLog.Topics[2].Hex())
-			tokenId := new(big.Int).SetBytes(vLog.Topics[3][:])
-			transferEvent.TokenId = tokenId
-
-			fmt.Printf("Sender Address: %s\n", transferEvent.From.Hex())
-			fmt.Printf("Recipient Address: %s\n", transferEvent.To.Hex())
-			fmt.Printf("Token ID: %s\n\n", transferEvent.TokenId.String())
-		}(vLog)
+		fmt.Println("Log Name: Transfer")
+		fmt.Printf("Transaction hash: %s\n", transferEvent.TxHash.Hex())
+		fmt.Printf("Block Number: %d\n", transferEvent.BlockNumber)
+		fmt.Printf("Block Hash: %s\n", transferEvent.BlockHash.Hex())
+		fmt.Printf("Sender Address: %s\n", transferEvent.From.Hex())
+		fmt.Printf("Recipient Address: %s\n", transferEvent.To.Hex())
+		fmt.Printf("Token ID: %s\n\n", transferEvent.TokenId.String())
 	}
 }
 
@@ -71,14 +74,15 @@ func listen(args ...string) error {
 		log.Fatal(err)
 	}
 
-	logs := make(chan types.Log)
+	logs = make(chan types.Log)
 	sub, err := smartContract.ContractClient.SubscribeFilterLogs(context.Background(), query, logs)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Printf("Listening to the smart contract events. Waiting for new events...\n\n")
-	go processEvents(logs)
+	processEvents()
+
 	for err := range sub.Err() {
 		log.Fatal(err)
 	}
@@ -90,7 +94,7 @@ func main() {
 	commandOptions := []menu.CommandOption{
 		{Command: "listen", Description: "Start listening to the smart contract events", Function: listen},
 	}
-	menuOptions := menu.NewMenuOptions("> ", 0)
+	menuOptions := menu.NewMenuOptions("\n> ", 0)
 	menu := menu.NewMenu(commandOptions, menuOptions)
 	menu.Start()
 }
