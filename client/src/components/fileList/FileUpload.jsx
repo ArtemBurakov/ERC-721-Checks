@@ -1,13 +1,12 @@
 import React, { useState, useRef } from 'react'
 import { create } from 'ipfs-http-client'
 
-import ToastError from './ToastError'
+import ToastError from '../toasts/ToastError'
 
-const ipfs = create('/ip4/127.0.0.1/tcp/5001')
+const ipfs = create(process.env.REACT_APP_IPFS_URL)
 
 function FileUpload({ setUploadedFiles }) {
   const fileInputRef = useRef(null)
-
   const [file, setFile] = useState(null)
   const [error, setError] = useState(null)
   const [showToast, setShowToast] = useState(false)
@@ -39,10 +38,10 @@ function FileUpload({ setUploadedFiles }) {
 
       if (showToast) toggleShowToast()
     } catch (error) {
-      console.error('Error uploading file to IPFS:', error)
       setError(
         'An error occurred while trying to reach the IPFS node. Please try again later.'
       )
+
       if (!showToast) toggleShowToast()
     }
   }

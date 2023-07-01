@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 
 import './App.css'
 
-import FileList from './components/FileList'
-import FileUpload from './components/FileUpload'
+import FileList from './components/fileList/FileList'
+import FileUpload from './components/fileList/FileUpload'
 
 function App() {
   const [uploadedFiles, setUploadedFiles] = useState([])
