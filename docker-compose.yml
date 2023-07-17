@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
 
   ipfs:
-    image: ipfs/kubo
+    image: ipfs/go-ipfs:latest
     ports:
       - 4001:4001
       - 5001:5001
