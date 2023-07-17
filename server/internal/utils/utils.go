@@ -3,12 +3,10 @@ package utils
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/joho/godotenv"
 )
 
 const (
@@ -53,8 +51,5 @@ func handleAddressPrompt(prompt string) (string, error) {
 }
 
 func EnvHelper(key string) string {
-	if err := godotenv.Load(DotEnvPath); err != nil {
-		log.Fatalf("Error loading .env file")
-	}
 	return os.Getenv(key)
 }
