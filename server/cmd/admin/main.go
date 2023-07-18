@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -38,7 +39,12 @@ func grantRole(address string) error {
 		return nil
 	}
 
-	if err := smartContract.GrantRole(address, smartContract.Auth.Nonce.Uint64()); err != nil {
+	currentNonce, err := smartContract.ContractClient.PendingNonceAt(context.Background(), smartContract.Auth.From)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve account nonce: %v", err)
+	}
+
+	if err := smartContract.GrantRole(address, currentNonce); err != nil {
 		fmt.Printf("failed to grant role: %v\n", err)
 
 		if err := minterRepository.UpdateMinter(address, models.ArchivedMinterStatus); err != nil {
@@ -55,7 +61,12 @@ func revokeRole(address string) error {
 		return nil
 	}
 
-	if err := smartContract.RevokeRole(address, smartContract.Auth.Nonce.Uint64()); err != nil {
+	currentNonce, err := smartContract.ContractClient.PendingNonceAt(context.Background(), smartContract.Auth.From)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve account nonce: %v", err)
+	}
+
+	if err := smartContract.RevokeRole(address, currentNonce); err != nil {
 		fmt.Printf("failed to revoke role: %v\n", err)
 
 		if err := minterRepository.UpdateMinter(address, models.ActiveMinterStatus); err != nil {
