@@ -4,10 +4,10 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
+      args:
+        - REACT_APP_IPFS_URL=
     ports:
       - 80:80
-    environment:
-      REACT_APP_IPFS_URL: /ip4/127.0.0.1/tcp/5001
 
   go-cli:
     stdin_open: true
