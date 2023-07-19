@@ -1,0 +1,50 @@
+version: "3"
+services:
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_IPFS_URL=
+    ports:
+      - 80:80
+
+  go-cli:
+    stdin_open: true
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=erc_721_checks
+      - DATABASE_USER=artem
+      - DATABASE_USER_PASSWORD=1111
+      - TESTNET_PROVIDER=
+      - SUPER_USER_PRIVATE_KEY=
+
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: "erc_721_checks"
+      POSTGRES_USER: "artem"
+      POSTGRES_PASSWORD: "1111"
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - .:/docker-entrypoint-initdb.d
+      - postgresql-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  ipfs:
+    image: ipfs/go-ipfs:latest
+    ports:
+      - 4001:4001
+      - 5001:5001
+      - 8080:8080
+
+volumes:
+  postgresql-data:

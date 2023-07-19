@@ -6,6 +6,9 @@ async function main() {
   const NFT = await ethers.getContractFactory("Checks");
   const nft = await NFT.deploy();
   console.log(`Contract deployed to address: ${nft.address}`);
+
+  const receipt = await nft.deployTransaction.wait();
+  console.log("Deployment transaction receipt:", receipt);
 }
 
 main()

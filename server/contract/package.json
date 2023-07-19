@@ -17,8 +17,10 @@
   },
   "homepage": "https://github.com/ArtemBurakov/ERC-721-Checks#readme",
   "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^1.0.6",
     "@nomiclabs/hardhat-ethers": "^2.2.2",
     "@nomiclabs/hardhat-etherscan": "^3.1.7",
+    "chai": "^4.3.4",
     "ethers": "^5.7.2",
     "hardhat": "^2.13.0",
     "node-fetch": "^2.6.9"
