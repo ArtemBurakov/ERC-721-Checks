@@ -35,7 +35,7 @@ This is a tool for deploying, verifying, accessing your smart contract functions
 - Go to the project directory
 
 ```bash
-  cd ERC-721-Checks/contract
+  cd ERC-721-Checks/server/contract
 ```
 
 - Install dependencies
@@ -46,7 +46,7 @@ This is a tool for deploying, verifying, accessing your smart contract functions
 
 ## Deployment
 
-To deploy your smart contract follow these steps. Run these commands inside `ERC-721-Checks/contract` folder.
+To deploy your smart contract follow these steps. Run these commands inside `ERC-721-Checks/server/contract` folder.
 
 - Compile contract
 
@@ -72,12 +72,24 @@ To deploy your smart contract follow these steps. Run these commands inside `ERC
 
 > After deploy, your contract need to be verified in case of future interactions
 
+## Running tests
+
+To run tests run this command inside `ERC-721-Checks/server/contract` folder.
+
+```bash
+  npx hardhat test
+```
+
+> feel free to rewrite tests inside `/test/checks.test.js` file or use your existing smart contract for testing
+
 ## Environment Variables
 
-You will need to add the following environment variables to your `.env` file inside `ERC-721-Checks/contract` folder.
+You will need to add the following environment variables to your `.env` file inside `ERC-721-Checks/server` folder.
 
 `PROVIDER_KEY` - your provider key
 
 `ETHERSCAN_API_KEY` - api key that you will get from Etherscan
 
 `ACCOUNT_PRIVATE_KEY` - your metamask crypto wallet private key
+
+`MINTER_TEST_PRIVATE_KEY` - metamask crypto wallet private key for minter (for tests only)
